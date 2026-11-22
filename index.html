@@ -80,6 +80,21 @@ tfoot td{font-weight:600;background:var(--zone)}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none}
 #toast.show{opacity:1}
 .note{font-size:13px;color:var(--mut)}
+.chips{display:flex;flex-wrap:wrap;gap:4px;min-width:150px}
+.chip{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--zone);color:var(--ink);border-radius:99px;padding:2px 10px;cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip.add{color:var(--co);border-color:var(--co);background:transparent}
+.chip:hover{border-color:var(--co)}
+.drop{border:1.5px dashed var(--line);border-radius:10px;padding:14px;background:var(--card);transition:border-color .2s,background .2s}
+.drop.over{border-color:var(--co);background:var(--zone)}
+.drop h4{margin:0 0 2px;font-size:16px}
+.files{list-style:none;margin:10px 0 0;padding:0}
+.files li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:14px}
+.files .fl{font:inherit;text-align:left;background:none;border:0;color:var(--co);cursor:pointer;padding:4px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.files .fl:hover{text-decoration:underline}
+.files span{color:var(--mut);font-size:13px;white-space:nowrap}
+.upl{display:inline-flex;align-items:center;min-height:40px;padding:0 14px;border-radius:8px;border:1px solid var(--co);color:var(--co);cursor:pointer;font-size:15px}
+.upl:hover{background:var(--zone)}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px}
 @media(max-width:600px){.form{grid-template-columns:minmax(0,1fr)}.bar{grid-template-columns:minmax(0,1fr) 4.5em}.bar .track{grid-column:1/-1;order:3}.steps li{grid-template-columns:2em minmax(0,1fr)}.steps li select{grid-column:2}h2{font-size:24px}}
 @media(prefers-reduced-motion:reduce){.track u{transition:none}}
 @media print{header,nav,.noprint,#toast{display:none!important}main{padding:0}#quote{border:0;padding:0}body{background:#fff}}
@@ -100,6 +115,7 @@ tfoot td{font-weight:600;background:var(--zone)}
   <a href="#quantity">ปริมาณแบบและใบเสนอราคา (3–5)</a>
   <a href="#schedule">ตารางงานและความคืบหน้า (7–8)</a>
   <a href="#payment">เบิกจ่าย (9)</a>
+  <a href="#files">ไฟล์งาน</a>
 </nav>
 <main id="app"></main>
 <div id="toast"></div>
@@ -115,11 +131,14 @@ const INPUTS=[['ไฟล์ KMZ แนวโครงการ','ข้อ 1'],
 const uid=()=>Math.random().toString(36).slice(2,9);
 function newProject(name){return{id:uid(),name,owner:'',contact:'',start:'',due:'',vat:0,
   steps:STEPS.map(()=>({status:'ยังไม่เริ่ม',date:'',note:''})),
-  inputs:INPUTS.map(([n,s])=>({name:n,step:s,status:'ยังไม่ขอ',req:'',got:'',src:'',file:'',note:''})),
+  agreed:'',agreedOn:'',
+  inputs:INPUTS.map(([n,s])=>({fid:uid(),name:n,step:s,status:'ยังไม่ขอ',req:'',got:'',src:'',file:'',note:''})),
   items:ITEMS.map(([n,sc,q,u])=>({name:n,scale:sc,qty:q,unit:u,per:'',price:'',paper:'',note:'',done:'',status:'ยังไม่เริ่ม',dueM:'',actual:''})),
   payments:[['ส่งแบบร่าง (Draft)',30],['ส่งแบบแก้ไขตามความเห็น',40],['ส่งแบบฉบับสมบูรณ์ + ไฟล์',30]].map(([n,p])=>({name:n,pct:p,status:'ยังไม่ถึงกำหนด',sent:'',billed:'',paid:'',note:''}))}}
 function load(){try{const s=localStorage.getItem(KEY);if(s)return JSON.parse(s)}catch(e){}const p=newProject('โครงการท่อทองแดง');return{current:p.id,projects:[p]}}
 let db=load();
+function migrate(){db.projects.forEach(p=>p.inputs.forEach(x=>{if(!x.fid)x.fid=uid()}))}
+migrate();
 const P=()=>db.projects.find(p=>p.id===db.current)||db.projects[0];
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -141,7 +160,26 @@ function totals(p){const s=p.items.reduce((a,it)=>a+sheets(it),0),sub=p.items.re
 function calcDue(p,i){const T=totals(p).s;if(!p.start||!p.due||!T||!sheets(p.items[i]))return null;const cum=p.items.slice(0,i+1).reduce((a,it)=>a+sheets(it),0);const d=D(p.start);d.setDate(d.getDate()+Math.round(days(D(p.due),D(p.start))*cum/T));return iso(d)}
 function target(p,i){return p.items[i].dueM||calcDue(p,i)}
 function late(p,i){const t=target(p,i),it=p.items[i];if(!t)return null;if(it.actual)return Math.max(0,days(D(it.actual),D(t)));if(it.status==='เสร็จแล้ว'||it.status==='ส่งแล้ว')return 0;return Math.max(0,days(today(),D(t)))}
-const paid=p=>p.payments.filter(x=>x.status==='ได้รับเงินแล้ว').reduce((a,x)=>a+n(x.pct)/100*totals(p).net,0);
+const value=p=>n(p.agreed)>0?n(p.agreed):totals(p).net;
+const paid=p=>p.payments.filter(x=>x.status==='ได้รับเงินแล้ว').reduce((a,x)=>a+n(x.pct)/100*value(p),0);
+
+// ---- file store (IndexedDB, this browser only)
+const CATS=[['kmz','ไฟล์ KMZ / KML'],['tor','TOR'],['quote','ใบเสนอราคาที่ตกลงแล้ว'],['data','ข้อมูลทำแบบ (ภาพถ่าย, LiDAR, Topo, ทางน้ำ)'],['dwg','แบบที่ส่งงาน'],['other','อื่น ๆ']];
+let FILES=[],FERR=false,_idb;
+function idb(){return _idb||(_idb=new Promise((res,rej)=>{const r=indexedDB.open('rid-files',1);r.onupgradeneeded=()=>r.result.createObjectStore('files',{keyPath:'id'});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}))}
+async function tx(mode,fn){const d=await idb();return new Promise((res,rej)=>{const t=d.transaction('files',mode),q=fn(t.objectStore('files'));t.oncomplete=()=>res(q?q.result:undefined);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)})}
+const fPut=r=>tx('readwrite',s=>s.put(r)),fDel=id=>tx('readwrite',s=>s.delete(id)),fAll=()=>tx('readonly',s=>s.getAll()),fGet=id=>tx('readonly',s=>s.get(id)),fClear=()=>tx('readwrite',s=>s.clear());
+async function loadFiles(){try{FILES=(await fAll()).filter(f=>f.pid===P().id).sort((a,b)=>a.added<b.added?1:-1);FERR=false}catch(e){FILES=[];FERR=true}render()}
+async function addFiles(list,cat,ref){list=[...list];if(!list.length)return;if(FERR){toast('เบราว์เซอร์นี้เก็บไฟล์ไม่ได้');return}
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+  try{for(const f of list)await fPut({id:uid()+uid(),pid:P().id,cat,ref:ref||'',name:f.name,size:f.size,type:f.type,added:new Date().toISOString(),blob:f});toast('เก็บไฟล์แล้ว '+list.length+' ไฟล์')}catch(e){toast('เก็บไฟล์ไม่สำเร็จ — พื้นที่อาจเต็ม')}
+  await loadFiles()}
+async function openFile(id){try{const f=await fGet(id);const a=document.createElement('a');a.href=URL.createObjectURL(f.blob);a.download=f.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000)}catch(e){toast('เปิดไฟล์ไม่ได้')}}
+const fsize=b=>b<1048576?Math.max(1,Math.round(b/1024))+' KB':(b/1048576).toFixed(1)+' MB';
+const rowCat=name=>/kmz|kml/i.test(name)?'kmz':/tor/i.test(name)?'tor':'data';
+const fileLis=fs=>fs.length?`<ul class="files">${fs.map(f=>`<li><button class="fl" data-open="${f.id}" title="ดาวน์โหลด ${esc(f.name)}">${esc(f.name)}</button><span>${fsize(f.size)} · ${th(f.added.slice(0,10))}</span><button class="x" data-fdel="${f.id}" aria-label="ลบไฟล์">✕</button></li>`).join('')}</ul>`:'<p class="note" style="margin:8px 0 0">ยังไม่มีไฟล์</p>';
+const upBtn=(cat,label='เลือกไฟล์')=>`<label class="upl">${label}<input type="file" multiple hidden data-upcat="${cat}"></label>`;
+const dropBox=(cat,title,extra='')=>`<div class="drop" data-drop="${cat}"><h4>${esc(title)}</h4><p class="note" style="margin:0 0 8px">ลากไฟล์มาวางที่นี่ หรือกดเลือกไฟล์${extra}</p>${upBtn(cat)}${fileLis(FILES.filter(f=>f.cat===cat))}</div>`;
 
 function bahtText(num){const DG=['','หนึ่ง','สอง','สาม','สี่','ห้า','หก','เจ็ด','แปด','เก้า'],U=['','สิบ','ร้อย','พัน','หมื่น','แสน'];
   const rd=(s,hi)=>{let o='';const L=s.length;for(let k=0;k<L;k++){const d=+s[k],q=L-k-1;if(!d)continue;if(q===1&&d===1)o+='สิบ';else if(q===1&&d===2)o+='ยี่สิบ';else if(q===0&&d===1&&(L>1||hi))o+='เอ็ด';else o+=DG[d]+U[q]}return o};
@@ -160,12 +198,13 @@ function vOverview(p){const t=totals(p),got=p.inputs.filter(x=>x.status==='ไ�
   const mx=Math.max(1,...p.items.map(sheets));
   return`<h2>${esc(p.name)}</h2><p class="sub">${esc(p.owner)||'ยังไม่ระบุเจ้าของงาน'} · ส่งงาน ${th(p.due)}${left!==null?` · <span class="${left<0?'late':''}">${left<0?'เลยกำหนด '+(-left):'เหลือ '+left} วัน</span>`:''}</p>
   <div class="kpis">
-   <div class="kpi"><span>มูลค่าเสนอราคา (บาท)</span><b>${money(t.net)}</b></div>
+   <div class="kpi"><span>${n(p.agreed)>0?'มูลค่างานที่ตกลง (บาท)':'มูลค่าเสนอราคา (บาท)'}</span><b>${money(value(p))}</b></div>
    <div class="kpi"><span>จำนวนแบบ</span><b>${t.s} แผ่น</b></div>
    <div class="kpi"><span>ความคืบหน้า</span><b>${pct(t.prog)}</b></div>
    <div class="kpi"><span>ข้อมูลที่ได้รับครบ</span><b>${got} / ${p.inputs.length}</b></div>
    <div class="kpi"><span>รับเงินแล้ว (บาท)</span><b class="ok">${money(pd)}</b></div>
-   <div class="kpi"><span>คงค้างรับ (บาท)</span><b>${money(t.net-pd)}</b></div>
+   <div class="kpi"><span>คงค้างรับ (บาท)</span><b>${money(value(p)-pd)}</b></div>
+   <div class="kpi"><span>ไฟล์งาน</span><b><a href="#files" style="color:inherit">${FILES.length} ไฟล์</a></b></div>
   </div>
   <div class="grid2">
    <div><h3>ชุดแบบ — แผ่นที่เสร็จ / ทั้งหมด</h3><div class="panel set">${p.items.map(it=>{const s=sheets(it),d=Math.min(n(it.done),s);return`<div class="bar"><span class="t" title="${esc(it.name)}">${esc(it.name)}</span><div class="track"><i style="width:${s/mx*100}%"></i><u style="width:${d/mx*100}%"></u></div><span class="n num">${d} / ${s||'–'}</span></div>`}).join('')}
@@ -182,8 +221,8 @@ function vOverview(p){const t=totals(p),got=p.inputs.filter(x=>x.status==='ไ�
   </div>`}
 
 function vInputs(p){return`<h2>ข้อมูลรับเข้า</h2><p class="sub">ขั้นตอน 1, 2 และ 6 — ติดตาม KMZ, TOR และข้อมูลที่ใช้ทำแบบ</p>
- <div class="scroll"><table><thead><tr><th>#</th><th>รายการข้อมูล</th><th>ขั้นตอน</th><th>สถานะ</th><th>วันที่ขอ</th><th>วันที่ได้รับ</th><th>ผู้ส่ง / แหล่งข้อมูล</th><th>ไฟล์ / ที่เก็บ</th><th>หมายเหตุ</th><th></th></tr></thead><tbody>
- ${p.inputs.map((x,i)=>`<tr><td class="num">${i+1}</td><td class="w-name">${inp(`inputs.${i}.name`,x.name)}</td><td class="w-s">${inp(`inputs.${i}.step`,x.step)}</td><td class="w-m">${sel(`inputs.${i}.status`,x.status,ST.input)}</td><td class="w-d">${inp(`inputs.${i}.req`,x.req,'date')}</td><td class="w-d">${inp(`inputs.${i}.got`,x.got,'date')}</td><td class="w-m">${inp(`inputs.${i}.src`,x.src)}</td><td class="w-m">${inp(`inputs.${i}.file`,x.file)}</td><td class="w-m">${inp(`inputs.${i}.note`,x.note)}</td><td>${del(`inputs.${i}`)}</td></tr>`).join('')}
+ <div class="scroll"><table><thead><tr><th>#</th><th>รายการข้อมูล</th><th>ขั้นตอน</th><th>สถานะ</th><th>ไฟล์แนบ</th><th>วันที่ขอ</th><th>วันที่ได้รับ</th><th>ผู้ส่ง / แหล่งข้อมูล</th><th>ไฟล์ / ที่เก็บ</th><th>หมายเหตุ</th><th></th></tr></thead><tbody>
+ ${p.inputs.map((x,i)=>`<tr><td class="num">${i+1}</td><td class="w-name">${inp(`inputs.${i}.name`,x.name)}</td><td class="w-s">${inp(`inputs.${i}.step`,x.step)}</td><td class="w-m">${sel(`inputs.${i}.status`,x.status,ST.input)}</td><td><div class="chips">${FILES.filter(f=>f.ref===x.fid).map(f=>`<button class="chip" data-open="${f.id}" title="ดาวน์โหลด ${esc(f.name)}">${esc(f.name)}</button>`).join('')}<label class="chip add">+ แนบ<input type="file" multiple hidden data-attach="${i}"></label></div></td><td class="w-d">${inp(`inputs.${i}.req`,x.req,'date')}</td><td class="w-d">${inp(`inputs.${i}.got`,x.got,'date')}</td><td class="w-m">${inp(`inputs.${i}.src`,x.src)}</td><td class="w-m">${inp(`inputs.${i}.file`,x.file)}</td><td class="w-m">${inp(`inputs.${i}.note`,x.note)}</td><td>${del(`inputs.${i}`)}</td></tr>`).join('')}
  </tbody></table></div><div class="row"><button class="btn ghost" data-add="inputs">+ เพิ่มรายการข้อมูล</button></div>`}
 
 function vQuantity(p){const t=totals(p);return`<h2>ปริมาณแบบและใบเสนอราคา</h2><p class="sub">ขั้นตอน 3–5 — กรอกปริมาณกับปริมาณต่อแผ่น (เช่น กม. กับ กม./แผ่น หรือหน้าตัดกับหน้าตัด/แผ่น) ระบบจะปัดขึ้นเป็นจำนวนแผ่น ถ้าเว้นปริมาณต่อแผ่นไว้ จะนับปริมาณเป็นจำนวนแผ่น</p>
@@ -191,7 +230,10 @@ function vQuantity(p){const t=totals(p);return`<h2>ปริมาณแบบ�
  ${p.items.map((it,i)=>`<tr><td class="num">${i+1}</td><td class="w-name">${inp(`items.${i}.name`,it.name)}</td><td class="w-m">${inp(`items.${i}.scale`,it.scale)}</td><td class="w-s">${inp(`items.${i}.qty`,it.qty,'number')}</td><td class="w-s">${inp(`items.${i}.unit`,it.unit)}</td><td class="w-s">${inp(`items.${i}.per`,it.per,'number')}</td><td class="r num calc">${sheets(it)||'–'}</td><td class="w-s">${inp(`items.${i}.price`,it.price,'number')}</td><td class="r num calc">${amount(it)?money(amount(it)):'–'}</td><td class="w-s">${inp(`items.${i}.paper`,it.paper)}</td><td class="w-m">${inp(`items.${i}.note`,it.note)}</td><td>${del(`items.${i}`)}</td></tr>`).join('')}
  </tbody><tfoot><tr><td></td><td colspan="5">รวม</td><td class="r num">${t.s}</td><td></td><td class="r num">${money(t.sub)}</td><td colspan="3"></td></tr></tfoot></table></div>
  <div class="row"><button class="btn ghost" data-add="items">+ เพิ่มประเภทแบบ</button><label style="margin-left:auto">VAT (%)</label><div style="width:90px">${inp('vat',p.vat,'number')}</div></div>
- <div class="row noprint"><h3 style="margin:0">ใบเสนอราคา</h3><button class="btn" id="print">พิมพ์ / บันทึก PDF</button></div>
+ <h3 class="noprint">ใบเสนอราคาที่ตกลงกับเจ้าของงานแล้ว</h3>
+ <div class="grid2 noprint"><div class="panel form"><label>ยอดที่ตกลง (บาท)</label>${inp('agreed',p.agreed??'','number')}<label>วันที่ตกลง</label>${inp('agreedOn',p.agreedOn??'','date')}<p class="note" style="grid-column:1/-1;margin:0">ถ้าใส่ยอดที่ตกลง ระบบจะใช้ยอดนี้คิดเงินแต่ละงวดและยอดคงค้างแทนยอดที่คำนวณได้ (${money(t.net)} บาท)</p></div>
+ ${dropBox('quote','ไฟล์ใบเสนอราคาที่ตกลงแล้ว',' (PDF, รูปภาพ, Excel ฯลฯ)')}</div>
+ <div class="row noprint" style="margin-top:28px"><h3 style="margin:0">ร่างใบเสนอราคาจากปริมาณแบบ</h3><button class="btn" id="print">พิมพ์ / บันทึก PDF</button></div>
  <div id="quote"><h4>ใบเสนอราคาค่าเขียนแบบ</h4><p style="text-align:center;margin:0 0 16px">${esc(p.name)}</p>
   <p style="margin:0">เรียน ${esc(p.owner)||'................................'}<span style="float:right">วันที่ ${today().toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'})}</span></p>
   <table style="margin-top:14px"><thead><tr><th>#</th><th>รายการ</th><th>มาตราส่วน</th><th class="r">จำนวน (แผ่น)</th><th class="r">ราคา/แผ่น</th><th class="r">จำนวนเงิน</th></tr></thead><tbody>
@@ -209,14 +251,19 @@ function vSchedule(p){const t=totals(p),nl=p.items.filter((_,i)=>late(p,i)>0).le
  ${p.items.map((it,i)=>{const s=sheets(it),l=late(p,i),c=calcDue(p,i);return`<tr><td class="num">${i+1}</td><td style="min-width:220px">${esc(it.name)}</td><td class="r num">${s||'–'}</td><td class="w-s">${inp(`items.${i}.done`,it.done,'number')}</td><td class="r num">${s?pct(Math.min(n(it.done),s)/s):'–'}</td><td class="w-m">${sel(`items.${i}.status`,it.status,ST.item)}</td><td class="num" style="white-space:nowrap">${th(c)}</td><td class="w-d">${inp(`items.${i}.dueM`,it.dueM,'date')}</td><td class="w-d">${inp(`items.${i}.actual`,it.actual,'date')}</td><td class="r num ${l>0?'late':''}">${l===null?'–':l?l+' วัน':'<span class="ok">ตรงเวลา</span>'}</td></tr>`}).join('')}
  </tbody></table></div><p class="note">รายการในหน้านี้มาจากหน้าปริมาณแบบ ถ้าจะเพิ่มหรือลบรายการ ให้ทำที่หน้านั้น</p>`}
 
-function vPayment(p){const t=totals(p),pd=paid(p),sp=p.payments.reduce((a,x)=>a+n(x.pct),0);return`<h2>การเบิกจ่ายเงิน</h2><p class="sub">ขั้นตอน 9 — จำนวนเงินแต่ละงวดคิดจากยอดรวมสุทธิของใบเสนอราคา</p>
- <div class="kpis" style="margin-bottom:18px"><div class="kpi"><span>มูลค่างาน (บาท)</span><b>${money(t.net)}</b></div><div class="kpi"><span>ได้รับเงินแล้ว (บาท)</span><b class="ok">${money(pd)}</b></div><div class="kpi"><span>คงค้างรับ (บาท)</span><b>${money(t.net-pd)}</b></div><div class="kpi"><span>รวม % ทุกงวด</span><b class="${sp!==100?'late':''}">${sp}%</b></div></div>
+function vPayment(p){const V=value(p),t={net:V},pd=paid(p),sp=p.payments.reduce((a,x)=>a+n(x.pct),0);return`<h2>การเบิกจ่ายเงิน</h2><p class="sub">ขั้นตอน 9 — จำนวนเงินแต่ละงวดคิดจาก${n(p.agreed)>0?'ยอดที่ตกลงกับเจ้าของงาน':'ยอดรวมสุทธิของใบเสนอราคา (ใส่ยอดที่ตกลงได้ที่หน้าปริมาณแบบ)'}</p>
+ <div class="kpis" style="margin-bottom:18px"><div class="kpi"><span>มูลค่างาน (บาท)</span><b>${money(V)}</b></div><div class="kpi"><span>ได้รับเงินแล้ว (บาท)</span><b class="ok">${money(pd)}</b></div><div class="kpi"><span>คงค้างรับ (บาท)</span><b>${money(V-pd)}</b></div><div class="kpi"><span>รวม % ทุกงวด</span><b class="${sp!==100?'late':''}">${sp}%</b></div></div>
  <div class="scroll"><table><thead><tr><th>งวด</th><th>รายละเอียดงานที่ส่ง</th><th class="r">%</th><th class="r">จำนวนเงิน</th><th>สถานะ</th><th>วันส่งงาน</th><th>วันวางบิล</th><th>วันได้รับเงิน</th><th>หมายเหตุ</th><th></th></tr></thead><tbody>
  ${p.payments.map((x,i)=>`<tr><td class="num">${i+1}</td><td class="w-name">${inp(`payments.${i}.name`,x.name)}</td><td class="w-s">${inp(`payments.${i}.pct`,x.pct,'number')}</td><td class="r num calc">${money(n(x.pct)/100*t.net)}</td><td class="w-m">${sel(`payments.${i}.status`,x.status,ST.pay)}</td><td class="w-d">${inp(`payments.${i}.sent`,x.sent,'date')}</td><td class="w-d">${inp(`payments.${i}.billed`,x.billed,'date')}</td><td class="w-d">${inp(`payments.${i}.paid`,x.paid,'date')}</td><td class="w-m">${inp(`payments.${i}.note`,x.note)}</td><td>${del(`payments.${i}`)}</td></tr>`).join('')}
  </tbody></table></div><div class="row"><button class="btn ghost" data-add="payments">+ เพิ่มงวด</button></div>
  <h3>จัดการโครงการ</h3><div class="row"><button class="btn ghost" id="delp" style="border-color:var(--bad);color:var(--bad)">ลบโครงการนี้</button><span class="note">ลบแล้วกู้คืนไม่ได้ ถ้าส่งออกข้อมูลไว้ก่อนจะนำกลับมาได้</span></div>`}
 
-const VIEWS={overview:vOverview,inputs:vInputs,quantity:vQuantity,schedule:vSchedule,payment:vPayment};
+function vFiles(p){const tot=FILES.reduce((a,f)=>a+f.size,0);return`<h2>ไฟล์งาน</h2><p class="sub">${FILES.length} ไฟล์ · ${fsize(tot)} — ไฟล์ที่แนบจากหน้าข้อมูลรับเข้าจะมาแสดงในหมวดนี้ด้วย กดชื่อไฟล์เพื่อดาวน์โหลด</p>
+ ${FERR?'<p class="late">เบราว์เซอร์นี้เก็บไฟล์ไม่ได้ (อาจเปิดโหมดไม่ระบุตัวตนอยู่)</p>':''}
+ <div class="fgrid">${CATS.map(([c,t])=>dropBox(c,t)).join('')}</div>
+ <p class="note" style="margin-top:18px">ไฟล์เก็บอยู่ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ไม่ได้อัปโหลดขึ้นเว็บ คนอื่นที่เปิดเว็บจึงไม่เห็น ให้กด "ส่งออกข้อมูล" เป็นระยะ ระบบจะรวมไฟล์ทั้งหมดไว้ในไฟล์สำรองด้วย และควรเก็บต้นฉบับไว้ในเครื่องหรือ Google Drive ด้วย</p>`}
+
+const VIEWS={overview:vOverview,inputs:vInputs,quantity:vQuantity,schedule:vSchedule,payment:vPayment,files:vFiles};
 function tab(){const h=location.hash.slice(1);return VIEWS[h]?h:'overview'}
 function render(){const p=P();
   $('#proj').innerHTML=db.projects.map(x=>`<option value="${x.id}"${x.id===p.id?' selected':''}>${esc(x.name)}</option>`).join('');
@@ -224,24 +271,41 @@ function render(){const p=P();
   $('#app').innerHTML=VIEWS[tb](p)}
 
 // ---- events
-const blank={inputs:()=>({name:'',step:'',status:'ยังไม่ขอ',req:'',got:'',src:'',file:'',note:''}),items:()=>({name:'',scale:'',qty:'',unit:'แผ่น',per:'',price:'',paper:'',note:'',done:'',status:'ยังไม่เริ่ม',dueM:'',actual:''}),payments:()=>({name:'',pct:0,status:'ยังไม่ถึงกำหนด',sent:'',billed:'',paid:'',note:''})};
+const blank={inputs:()=>({fid:uid(),name:'',step:'',status:'ยังไม่ขอ',req:'',got:'',src:'',file:'',note:''}),items:()=>({name:'',scale:'',qty:'',unit:'แผ่น',per:'',price:'',paper:'',note:'',done:'',status:'ยังไม่เริ่ม',dueM:'',actual:''}),payments:()=>({name:'',pct:0,status:'ยังไม่ถึงกำหนด',sent:'',billed:'',paid:'',note:''})};
 function setPath(obj,path,val){const k=path.split('.');let o=obj;for(let i=0;i<k.length-1;i++)o=o[k[i]];o[k.at(-1)]=val}
-$('#app').addEventListener('change',e=>{const k=e.target.dataset.k;if(!k)return;let v=e.target.value;if(e.target.type==='number')v=v===''?'':+v;setPath(P(),k,v);save();render()});
+$('#app').addEventListener('change',e=>{const el=e.target;
+  if(el.dataset.attach!==undefined){const x=P().inputs[+el.dataset.attach];addFiles(el.files,rowCat(x.name),x.fid);el.value='';return}
+  if(el.dataset.upcat){addFiles(el.files,el.dataset.upcat);el.value='';return}
+  const k=el.dataset.k;if(!k)return;let v=e.target.value;if(e.target.type==='number')v=v===''?'':+v;setPath(P(),k,v);save();render()});
+$('#app').addEventListener('dragover',e=>{const d=e.target.closest('[data-drop]');if(!d)return;e.preventDefault();d.classList.add('over')});
+$('#app').addEventListener('dragleave',e=>{const d=e.target.closest('[data-drop]');if(d&&!d.contains(e.relatedTarget))d.classList.remove('over')});
+$('#app').addEventListener('drop',e=>{const d=e.target.closest('[data-drop]');if(!d)return;e.preventDefault();d.classList.remove('over');addFiles(e.dataTransfer.files,d.dataset.drop)});
 $('#app').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.open){openFile(b.dataset.open);return}
+  if(b.dataset.fdel){if(!b.classList.contains('arm')){b.classList.add('arm');b.textContent='ยืนยันลบ';setTimeout(()=>{b.classList.remove('arm');b.textContent='✕'},3000);return}
+    fDel(b.dataset.fdel).then(loadFiles).catch(()=>toast('ลบไฟล์ไม่สำเร็จ'));return}
   if(b.dataset.add){P()[b.dataset.add].push(blank[b.dataset.add]());save();render();return}
   if(b.dataset.del||b.id==='delp'){if(!b.classList.contains('arm')){b.classList.add('arm');const o=b.textContent;b.textContent='ยืนยันลบ';setTimeout(()=>{b.classList.remove('arm');b.textContent=o},3000);return}
-    if(b.id==='delp'){if(db.projects.length===1){toast('ต้องมีอย่างน้อย 1 โครงการ');return}db.projects=db.projects.filter(x=>x.id!==db.current);db.current=db.projects[0].id;location.hash='overview'}
-    else{const [arr,i]=b.dataset.del.split('.');P()[arr].splice(+i,1)}save();render();return}
+    if(b.id==='delp'){if(db.projects.length===1){toast('ต้องมีอย่างน้อย 1 โครงการ');return}const gone=db.current;db.projects=db.projects.filter(x=>x.id!==gone);db.current=db.projects[0].id;save();location.hash='overview';
+      fAll().then(a=>Promise.all(a.filter(f=>f.pid===gone).map(f=>fDel(f.id)))).catch(()=>{}).then(loadFiles);return}
+    const [arr,i]=b.dataset.del.split('.');P()[arr].splice(+i,1);save();render();return}
   if(b.id==='print'){try{window.print()}catch(err){toast('พิมพ์จากหน้านี้ไม่ได้ ลองเปิดจากเว็บของคุณ')}}});
 window.addEventListener('hashchange',render);
-$('#proj').addEventListener('change',e=>{db.current=e.target.value;save();render()});
-$('#newp').addEventListener('click',()=>{const p=newProject('โครงการใหม่');db.projects.push(p);db.current=p.id;save();location.hash='overview';render()});
-$('#exp').addEventListener('click',async()=>{const txt=JSON.stringify(db,null,1);
+$('#proj').addEventListener('change',e=>{db.current=e.target.value;save();loadFiles()});
+$('#newp').addEventListener('click',()=>{const p=newProject('โครงการใหม่');db.projects.push(p);db.current=p.id;save();location.hash='overview';loadFiles()});
+const toData=b=>new Promise((r,j)=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.onerror=j;fr.readAsDataURL(b)});
+$('#exp').addEventListener('click',async()=>{toast('กำลังเตรียมไฟล์สำรอง…');let files=[];
+  try{files=await Promise.all((await fAll()).map(async f=>{const{blob,...m}=f;return{...m,data:await toData(blob)}}))}catch(err){}
+  const txt=JSON.stringify({...db,files});
   try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download='rid-drafting-'+iso(new Date())+'.json';document.body.appendChild(a);a.click();a.remove()}catch(err){}
-  try{await navigator.clipboard.writeText(txt);toast('ดาวน์โหลดไฟล์แล้ว และคัดลอกข้อมูลไว้ในคลิปบอร์ดด้วย')}catch(err){toast('ดาวน์โหลดไฟล์ข้อมูลแล้ว')}});
+  if(!files.length){try{await navigator.clipboard.writeText(txt);toast('ดาวน์โหลดไฟล์สำรองแล้ว และคัดลอกข้อมูลไว้ในคลิปบอร์ดด้วย');return}catch(err){}}
+  toast('ดาวน์โหลดไฟล์สำรองแล้ว (รวมไฟล์แนบ '+files.length+' ไฟล์)')});
 $('#impb').addEventListener('click',()=>$('#imp').click());
-$('#imp').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());if(!d.projects?.length)throw 0;db=d;if(!db.projects.some(x=>x.id===db.current))db.current=db.projects[0].id;save();render();toast('นำเข้าข้อมูลแล้ว')}catch(err){toast('ไฟล์นี้ไม่ใช่ข้อมูลของระบบนี้')}e.target.value=''});
-render();
+$('#imp').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{const d=JSON.parse(await f.text());if(!d.projects?.length)throw 0;const files=d.files;delete d.files;db=d;migrate();if(!db.projects.some(x=>x.id===db.current))db.current=db.projects[0].id;save();
+    if(Array.isArray(files)){await fClear();for(const x of files){const{data,...m}=x;await fPut({...m,blob:await (await fetch(data)).blob()})}}
+    toast('นำเข้าข้อมูลแล้ว');await loadFiles()}catch(err){toast('ไฟล์นี้ไม่ใช่ข้อมูลของระบบนี้ หรือนำเข้าไม่สำเร็จ')}});
+render();loadFiles();
 }
 </script>
 </body>
